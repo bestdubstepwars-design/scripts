@@ -1,0 +1,33 @@
+name: check
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: vigilar
+  cancel-in-progress: false
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          cache: pip
+      - run: pip install -r requirements.txt
+      # Las claves de caché son inmutables: se guarda una por ejecución y se restaura la última.
+      - uses: actions/cache@v6
+        with:
+          path: estado.json
+          key: estado-${{ github.run_id }}
+          restore-keys: estado-
+      - run: python imed_alertas.py
+        env:
+          IMED_USUARIO: ${{ secrets.IMED_USUARIO }}
+          IMED_PASSWORD: ${{ secrets.IMED_PASSWORD }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
