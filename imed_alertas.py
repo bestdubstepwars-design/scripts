@@ -191,7 +191,7 @@ def main():
     ap.add_argument('--sin-aviso', action='store_true', help='solo muestra, no notifica ni guarda')
     ap.add_argument('--minutos', type=float, default=0,
                     help='seguir revisando durante este tiempo (0 = una sola revisión)')
-    ap.add_argument('--intervalo', type=float, default=10, help='minutos entre revisiones')
+    ap.add_argument('--intervalo', type=float, default=25, help='minutos entre revisiones')
     args = ap.parse_args()
 
     fin = time.monotonic() + args.minutos * 60
@@ -212,9 +212,13 @@ def main():
                 imed = None
         else:
             fallos += 1
-        if time.monotonic() + args.intervalo * 60 > fin:
+        if time.monotonic() >= fin:
             break
+        # También se espera tras la última revisión: la ejecución siguiente (en cola)
+        # arranca al terminar esta y así se mantiene el intervalo entre ambas.
         time.sleep(args.intervalo * 60)
+        if time.monotonic() >= fin:
+            break
     if fallos == vueltas:
         sys.exit('Todas las revisiones han fallado')
 

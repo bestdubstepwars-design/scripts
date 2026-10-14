@@ -1,7 +1,7 @@
 name: check
 
 on:
-  # Cada ejecución revisa cada 10 min durante ~40 min. El cron solo deja otra en cola
+  # Cada ejecución revisa cada 25 min durante ~50 min. El cron solo deja otra en cola
   # (concurrency) para que arranque al terminar la anterior; GitHub lo retrasa mucho.
   schedule:
     - cron: '*/15 * * * *'
@@ -14,7 +14,7 @@ concurrency:
 jobs:
   vigilar:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     env:
       TZ: Europe/Madrid
     steps:
@@ -30,7 +30,7 @@ jobs:
           path: estado.json
           key: estado-${{ github.run_id }}
           restore-keys: estado-
-      - run: python -u imed_alertas.py --minutos 45
+      - run: python -u imed_alertas.py --minutos 50 --intervalo 25
         env:
           IMED_USUARIO: ${{ secrets.IMED_USUARIO }}
           IMED_PASSWORD: ${{ secrets.IMED_PASSWORD }}
