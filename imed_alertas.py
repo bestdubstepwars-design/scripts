@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -63,6 +64,8 @@ class Imed:
     def _get(self, url):
         r = self.s.get(url, timeout=30)
         r.raise_for_status()
+        if url == CITAS and 'login' in r.url.lower():
+            raise ImedError('Sesión caducada')
         return r
 
     def _post(self, html, extra=None, target=''):
@@ -162,15 +165,7 @@ def notificar(topic, nuevos):
     r.raise_for_status()
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--dias', type=int, default=30, help='horizonte de búsqueda desde hoy')
-    ap.add_argument('--especialidad', default=ESPECIALIDAD)
-    ap.add_argument('--subconsulta', default=SUBCONSULTA, help="'' si la especialidad no tiene")
-    ap.add_argument('--sin-aviso', action='store_true', help='solo muestra, no notifica ni guarda')
-    args = ap.parse_args()
-
-    imed = Imed(os.environ['IMED_USUARIO'], os.environ['IMED_PASSWORD'])
+def revisar(imed, args):
     actuales = huecos(imed, args.especialidad, args.subconsulta,
                       date.today() + timedelta(days=args.dias))
     try:
@@ -188,8 +183,41 @@ def main():
     ESTADO.write_text(json.dumps(sorted(actuales)), encoding='utf-8')
 
 
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--dias', type=int, default=30, help='horizonte de búsqueda desde hoy')
+    ap.add_argument('--especialidad', default=ESPECIALIDAD)
+    ap.add_argument('--subconsulta', default=SUBCONSULTA, help="'' si la especialidad no tiene")
+    ap.add_argument('--sin-aviso', action='store_true', help='solo muestra, no notifica ni guarda')
+    ap.add_argument('--minutos', type=float, default=0,
+                    help='seguir revisando durante este tiempo (0 = una sola revisión)')
+    ap.add_argument('--intervalo', type=float, default=10, help='minutos entre revisiones')
+    args = ap.parse_args()
+
+    fin = time.monotonic() + args.minutos * 60
+    imed = None
+    vueltas = fallos = 0
+    while True:
+        vueltas += 1
+        print(time.strftime('%H:%M'), 'revisando')
+        # Un segundo intento con login nuevo cubre la sesión caducada y los cortes puntuales.
+        for _ in range(2):
+            try:
+                if imed is None:
+                    imed = Imed(os.environ['IMED_USUARIO'], os.environ['IMED_PASSWORD'])
+                revisar(imed, args)
+                break
+            except (ImedError, requests.RequestException) as e:
+                print(f'Error: {e}')
+                imed = None
+        else:
+            fallos += 1
+        if time.monotonic() + args.intervalo * 60 > fin:
+            break
+        time.sleep(args.intervalo * 60)
+    if fallos == vueltas:
+        sys.exit('Todas las revisiones han fallado')
+
+
 if __name__ == '__main__':
-    try:
-        main()
-    except (ImedError, requests.RequestException) as e:
-        sys.exit(f'Error: {e}')
+    main()
