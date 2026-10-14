@@ -13,6 +13,8 @@ jobs:
   vigilar:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      TZ: Europe/Madrid
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

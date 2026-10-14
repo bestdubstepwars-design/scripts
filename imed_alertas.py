@@ -91,29 +91,22 @@ class Imed:
             raise ImedError('La búsqueda no devolvió el calendario')
         return html
 
-    def dias_libres(self, html, hasta):
-        """Días con hueco desde hoy hasta `hasta`, pidiendo al calendario cada mes que abarca."""
-        hoy = date.today()
-        base = campos(html)
-        dias = []
-        visible = hoy.replace(day=1)
-        while visible <= hasta:
-            data = dict(base)
-            data[f'{P}Calendario'] = json.dumps({
-                'visibleDate': visible.strftime('%m/%d/%Y'),
-                'initialVisibleDate': hoy.strftime('%m/%d/%Y'),
-                'selectedDates': [],
-            })
-            data['__CALLBACKID'] = f'{P}Calendario'
-            data['__CALLBACKPARAM'] = 'c0:UPDATE'
-            r = self.s.post(CITAS, data=data, timeout=30)
-            r.raise_for_status()
-            if '/*DX*/' not in r.text:
-                raise ImedError('Respuesta inesperada del calendario')
-            dias += [d for d in RE_DIA.findall(r.text)
-                     if d not in dias and datetime.strptime(d, '%d/%m/%Y').date() <= hasta]
-            visible = (visible + timedelta(days=31)).replace(day=1)
-        return dias
+    def dias_libres(self, html, mes, hasta):
+        """Muestra `mes` en el calendario y devuelve sus días con hueco hasta `hasta`."""
+        data = campos(html)
+        data[f'{P}Calendario'] = json.dumps({
+            'visibleDate': mes.strftime('%m/%d/%Y'),
+            'initialVisibleDate': date.today().strftime('%m/%d/%Y'),
+            'selectedDates': [],
+        })
+        data['__CALLBACKID'] = f'{P}Calendario'
+        data['__CALLBACKPARAM'] = 'c0:UPDATE'
+        r = self.s.post(CITAS, data=data, timeout=30)
+        r.raise_for_status()
+        if '/*DX*/' not in r.text:
+            raise ImedError('Respuesta inesperada del calendario')
+        return [d for d in dict.fromkeys(RE_DIA.findall(r.text))
+                if datetime.strptime(d, '%d/%m/%Y').date() <= hasta]
 
     def horas(self, html, dia):
         html = self._post(html, {f'{P}hfFecha': f'{dia} 0:00:00', f'{P}bCitaDia': ''})
@@ -132,14 +125,25 @@ def huecos(imed, especialidad, subconsulta, hasta):
     res = {}
     for centro, nombre in CENTROS.items():
         html = imed.buscar(centro, especialidad, subconsulta)
-        dias = imed.dias_libres(html, hasta)
-        print(f'{nombre}: {len(dias)} días con hueco')
-        for i, dia in enumerate(dias):
-            horas = imed.horas(html, dia) if i < MAX_DIAS_CON_HORAS else []
-            for hora, medico in horas:
-                res[f'{centro}|{dia}|{hora}|{medico}'] = f'{dia} {hora} · {medico} ({nombre})'
-            if not horas:
-                res[f'{centro}|{dia}'] = f'{dia} ({nombre})'
+        mes = date.today().replace(day=1)
+        n = 0
+        while mes <= hasta:
+            # Las horas se piden justo después de mostrar su mes: el servidor responde
+            # sin horas para los días de un mes distinto al último mostrado.
+            for dia in imed.dias_libres(html, mes, hasta):
+                n += 1
+                if n > MAX_DIAS_CON_HORAS:
+                    res[f'{centro}|{dia}'] = f'{dia} ({nombre})'
+                    continue
+                horas = imed.horas(html, dia)
+                # Pasada la medianoche el calendario marca el día actual en todos los centros
+                # aunque no tenga horas: no es un hueco real.
+                if not horas:
+                    print(f'{nombre}: {dia} sin horas, se ignora')
+                for hora, medico in horas:
+                    res[f'{centro}|{dia}|{hora}|{medico}'] = f'{dia} {hora} · {medico} ({nombre})'
+            mes = (mes + timedelta(days=31)).replace(day=1)
+        print(f'{nombre}: {n} días con hueco')
     return res
 
 
