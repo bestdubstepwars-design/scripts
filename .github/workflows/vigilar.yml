@@ -1,18 +1,18 @@
-name: check
+#name: check
 
-on:
+#on:
   # Cada ejecución revisa durante ~2 h (cada 15 min de día, 30 de noche, hora de Madrid)
   # con un solo login. El cron solo deja otra en cola
   # (concurrency) para que arranque al terminar la anterior; GitHub lo retrasa mucho.
-  schedule:
-    - cron: '*/15 * * * *'
-  workflow_dispatch:
+ # schedule:
+  #  - cron: '*/15 * * * *'
+  #workflow_dispatch:
 
-concurrency:
-  group: vigilar
+#concurrency:
+#  group: vigilar
   cancel-in-progress: false
 
-jobs:
+#jobs:
   vigilar:
     runs-on: ubuntu-latest
     timeout-minutes: 150
